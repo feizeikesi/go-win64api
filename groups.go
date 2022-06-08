@@ -5,7 +5,6 @@ package winapi
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -144,7 +143,7 @@ func LocalGroupDel(name string) (bool, error) {
 
 func localGroupModMembers(proc *syscall.LazyProc, groupname string, usernames []string) (bool, error) {
 	memberInfos := make([]LOCALGROUP_MEMBERS_INFO_3, 0, len(usernames))
-	hostname, err := os.Hostname()
+	hostname, err := physicalNetBIOS()
 	if err != nil {
 		return false, fmt.Errorf("Unable to determine hostname: %s", err)
 	}

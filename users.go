@@ -5,7 +5,7 @@ package winapi
 
 import (
 	"fmt"
-	"os"
+	"golang.org/x/sys/windows"
 	"syscall"
 	"time"
 	"unsafe"
@@ -320,8 +320,8 @@ func ListLocalUsers() ([]so.LocalUser, error) {
 	)
 
 	ret, _, _ := usrNetUserEnum.Call(
-		uintptr(0),         // servername
-		uintptr(uint32(2)), // level, USER_INFO_2
+		uintptr(0),                                  // servername
+		uintptr(uint32(2)),                          // level, USER_INFO_2
 		uintptr(uint32(USER_FILTER_NORMAL_ACCOUNT)), // filter, only "normal" accounts.
 		uintptr(unsafe.Pointer(&dataPointer)),       // struct buffer for output data.
 		uintptr(uint32(USER_MAX_PREFERRED_LENGTH)),  // allow as much memory as required.
@@ -372,9 +372,32 @@ func ListLocalUsers() ([]so.LocalUser, error) {
 	return retVal, nil
 }
 
+func physicalNetBIOS() (name string, err error) {
+	// Use PhysicalDnsHostname to uniquely identify host in a cluster
+	const format = windows.ComputerNamePhysicalNetBIOS
+
+	n := uint32(64)
+	for {
+		b := make([]uint16, n)
+		err := windows.GetComputerNameEx(format, &b[0], &n)
+		if err == nil {
+			return syscall.UTF16ToString(b[:n]), nil
+		}
+		if err != syscall.ERROR_MORE_DATA {
+			return "", err
+		}
+
+		// If we received an ERROR_MORE_DATA, but n doesn't get larger,
+		// something has gone wrong and we may be in an infinite loop
+		if n <= uint32(len(b)) {
+			return "", err
+		}
+	}
+}
+
 // AddGroupMembership adds the user as a member of the specified group.
 func AddGroupMembership(username, groupname string) (bool, error) {
-	hn, _ := os.Hostname()
+	hn, _ := physicalNetBIOS()
 	uPointer, err := syscall.UTF16PtrFromString(hn + `\` + username)
 	if err != nil {
 		return false, fmt.Errorf("Unable to encode username to UTF16")
@@ -402,7 +425,7 @@ func AddGroupMembership(username, groupname string) (bool, error) {
 
 // RemoveGroupMembership removes the user from the specified group.
 func RemoveGroupMembership(username, groupname string) (bool, error) {
-	hn, _ := os.Hostname()
+	hn, _ := physicalNetBIOS()
 	uPointer, err := syscall.UTF16PtrFromString(hn + `\` + username)
 	if err != nil {
 		return false, fmt.Errorf("unable to encode username to UTF16")
